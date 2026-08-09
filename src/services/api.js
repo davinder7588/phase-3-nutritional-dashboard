@@ -1,7 +1,6 @@
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ||
-  "https://diet-insights-api-2026-eha3bhdsabg6b3ha.canadacentral-01.azurewebsites.net/api";
-
+  "https://phase3-diet-api-0135-c4c0huhcfgauc2dv.canadacentral-01.azurewebsites.net/api";
 export async function getDietTypes() {
   const response = await fetch(`${API_BASE_URL}/diet-types`);
   const data = await response.json();
