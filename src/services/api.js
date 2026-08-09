@@ -1,0 +1,61 @@
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL ||
+  "https://diet-insights-api-2026-eha3bhdsabg6b3ha.canadacentral-01.azurewebsites.net/api";
+
+export async function getDietTypes() {
+  const response = await fetch(`${API_BASE_URL}/diet-types`);
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(
+      data.error || "Unable to retrieve diet types."
+    );
+  }
+
+  return data.dietTypes;
+}
+
+export async function getNutritionalInsights(dietType = "all") {
+  const query = new URLSearchParams({
+    dietType,
+  });
+
+  const response = await fetch(
+    `${API_BASE_URL}/insights?${query.toString()}`
+  );
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(
+      data.error || "Unable to retrieve nutritional insights."
+    );
+  }
+
+  return data;
+}
+
+export async function getRecipes({
+  keyword = "",
+  dietType = "all",
+  page = 1,
+  pageSize = 10,
+} = {}) {
+  const query = new URLSearchParams({
+    keyword,
+    dietType,
+    page: String(page),
+    pageSize: String(pageSize),
+  });
+
+  const response = await fetch(
+    `${API_BASE_URL}/recipes?${query.toString()}`
+  );
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || "Unable to retrieve recipes.");
+  }
+
+  return data;
+}

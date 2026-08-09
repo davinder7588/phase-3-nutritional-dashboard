@@ -1,0 +1,603 @@
+import { useEffect, useState } from "react";
+
+import {
+  ArcElement,
+  BarElement,
+  CategoryScale,
+  Chart as ChartJS,
+  Legend,
+  LinearScale,
+  LineElement,
+  PointElement,
+  Title,
+  Tooltip,
+} from "chart.js";
+
+import { Bar, Pie, Scatter } from "react-chartjs-2";
+
+import {
+  getDietTypes,
+  getNutritionalInsights,
+  getRecipes,
+} from "./services/api";
+
+import "./App.css";
+
+ChartJS.register(
+  ArcElement,
+  BarElement,
+  CategoryScale,
+  LinearScale,
+  LineElement,
+  PointElement,
+  Title,
+  Tooltip,
+  Legend
+);
+
+function capitalize(value) {
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function getHeatmapColor(value) {
+  const number = Number(value);
+  const strength = Math.min(Math.abs(number), 1);
+  const opacity = 0.25 + strength * 0.7;
+
+  return number >= 0
+    ? `rgba(37, 99, 235, ${opacity})`
+    : `rgba(220, 38, 38, ${opacity})`;
+}
+
+function App() {
+  const [dietTypes, setDietTypes] = useState([]);
+  const [selectedDiet, setSelectedDiet] = useState("all");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [dashboardData, setDashboardData] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [recipeKeyword, setRecipeKeyword] = useState("");
+  const [appliedKeyword, setAppliedKeyword] = useState("");
+  const [recipeDiet, setRecipeDiet] = useState("all");
+  const [recipes, setRecipes] = useState([]);
+  const [recipePagination, setRecipePagination] = useState({
+    page: 1,
+    pageSize: 10,
+    totalItems: 0,
+    totalPages: 0,
+  });
+  const [recipesLoading, setRecipesLoading] = useState(true);
+  const [recipesError, setRecipesError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    async function initializeDashboard() {
+      try {
+        setLoading(true);
+        setError("");
+
+        const [types, insights] = await Promise.all([
+          getDietTypes(),
+          getNutritionalInsights("all"),
+        ]);
+
+        setDietTypes(types);
+        setDashboardData(insights);
+      } catch (requestError) {
+        console.error(requestError);
+        setError(requestError.message);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    initializeDashboard();
+  }, []);
+
+  useEffect(() => {
+    async function loadRecipes() {
+      try {
+        setRecipesLoading(true);
+        setRecipesError("");
+        const data = await getRecipes({
+          keyword: appliedKeyword,
+          dietType: recipeDiet,
+          page: currentPage,
+          pageSize: 10,
+        });
+        setRecipes(data.recipes);
+        setRecipePagination(data.pagination);
+      } catch (requestError) {
+        console.error(requestError);
+        setRecipesError(requestError.message);
+      } finally {
+        setRecipesLoading(false);
+      }
+    }
+
+    loadRecipes();
+  }, [appliedKeyword, recipeDiet, currentPage]);
+
+  function handleRecipeSearch(event) {
+    event.preventDefault();
+    setCurrentPage(1);
+    setAppliedKeyword(recipeKeyword.trim());
+  }
+
+  function clearRecipeFilters() {
+    setRecipeKeyword("");
+    setAppliedKeyword("");
+    setRecipeDiet("all");
+    setCurrentPage(1);
+  }
+
+  async function handleInsights() {
+    try {
+      setLoading(true);
+      setError("");
+      setNotice("");
+
+      const typedDiet = searchTerm.trim().toLowerCase();
+
+      const requestedDiet = dietTypes.includes(typedDiet)
+        ? typedDiet
+        : selectedDiet;
+
+      const data = await getNutritionalInsights(requestedDiet);
+
+      setSelectedDiet(requestedDiet);
+      setDashboardData(data);
+    } catch (requestError) {
+      console.error(requestError);
+      setError(requestError.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const barData = dashboardData
+    ? {
+      labels: dashboardData.barChart.labels,
+      datasets: [
+        {
+          label: "Protein (g)",
+          data: dashboardData.barChart.protein,
+        },
+        {
+          label: "Carbohydrates (g)",
+          data: dashboardData.barChart.carbohydrates,
+        },
+        {
+          label: "Fat (g)",
+          data: dashboardData.barChart.fat,
+        },
+      ],
+    }
+    : null;
+
+  const scatterData = dashboardData
+    ? {
+      datasets: [
+        {
+          label: "Protein vs Carbohydrates",
+          data: dashboardData.scatterPlot,
+          pointRadius: 3,
+        },
+      ],
+    }
+    : null;
+
+  const pieData = dashboardData
+    ? {
+      labels: dashboardData.pieChart.labels,
+      datasets: [
+        {
+          label: "Recipes",
+          data: dashboardData.pieChart.values,
+        },
+      ],
+    }
+    : null;
+
+  return (
+    <div className="app">
+      <header className="header">
+        <h1>Nutritional Insights</h1>
+      </header>
+
+      <main className="main-content">
+        <section>
+          <h2>Explore Nutritional Insights</h2>
+
+          {loading && (
+            <div className="status-message">
+              Loading nutritional insights...
+            </div>
+          )}
+
+          {error && (
+            <div className="error-message">
+              <strong>Error:</strong> {error}
+            </div>
+          )}
+
+          <div className="chart-grid">
+            <article className="chart-card">
+              <h3>Bar Chart</h3>
+              <p>Average macronutrient content by diet type.</p>
+
+              <div className="chart-area">
+                {barData ? (
+                  <Bar
+                    data={barData}
+                    options={{
+                      responsive: true,
+                      maintainAspectRatio: false,
+                      plugins: {
+                        legend: {
+                          position: "bottom",
+                        },
+                      },
+                      scales: {
+                        y: {
+                          beginAtZero: true,
+                        },
+                      },
+                    }}
+                  />
+                ) : (
+                  <p className="chart-placeholder">
+                    Waiting for data...
+                  </p>
+                )}
+              </div>
+            </article>
+
+            <article className="chart-card">
+              <h3>Scatter Plot</h3>
+              <p>
+                Nutrient relationships (e.g., protein vs carbs).
+              </p>
+
+              <div className="chart-area">
+                {scatterData ? (
+                  <Scatter
+                    data={scatterData}
+                    options={{
+                      responsive: true,
+                      maintainAspectRatio: false,
+                      plugins: {
+                        legend: {
+                          position: "bottom",
+                        },
+                      },
+                      scales: {
+                        x: {
+                          title: {
+                            display: true,
+                            text: "Protein (g)",
+                          },
+                        },
+                        y: {
+                          title: {
+                            display: true,
+                            text: "Carbohydrates (g)",
+                          },
+                        },
+                      },
+                    }}
+                  />
+                ) : (
+                  <p className="chart-placeholder">
+                    Waiting for data...
+                  </p>
+                )}
+              </div>
+            </article>
+
+            <article className="chart-card">
+              <h3>Heatmap</h3>
+              <p>Nutrient correlations.</p>
+
+              <div className="chart-area heatmap-area">
+                {dashboardData ? (
+                  <table className="heatmap-table">
+                    <thead>
+                      <tr>
+                        <th></th>
+
+                        {dashboardData.heatmap.labels.map((label) => (
+                          <th key={label}>{label}</th>
+                        ))}
+                      </tr>
+                    </thead>
+
+                    <tbody>
+                      {dashboardData.heatmap.matrix.map(
+                        (row, rowIndex) => (
+                          <tr key={`row-${rowIndex}`}>
+                            <th>
+                              {
+                                dashboardData.heatmap.labels[
+                                rowIndex
+                                ]
+                              }
+                            </th>
+
+                            {row.map((value, columnIndex) => (
+                              <td
+                                key={`${rowIndex}-${columnIndex}`}
+                                style={{
+                                  backgroundColor:
+                                    getHeatmapColor(value),
+                                }}
+                                title={`${dashboardData.heatmap.labels[rowIndex]} vs ${dashboardData.heatmap.labels[columnIndex]}: ${value}`}
+                              >
+                                {Number(value).toFixed(2)}
+                              </td>
+                            ))}
+                          </tr>
+                        )
+                      )}
+                    </tbody>
+                  </table>
+                ) : (
+                  <p className="chart-placeholder">
+                    Waiting for data...
+                  </p>
+                )}
+              </div>
+            </article>
+
+            <article className="chart-card">
+              <h3>Pie Chart</h3>
+              <p>Recipe distribution by diet type.</p>
+
+              <div className="chart-area">
+                {pieData ? (
+                  <Pie
+                    data={pieData}
+                    options={{
+                      responsive: true,
+                      maintainAspectRatio: false,
+                      plugins: {
+                        legend: {
+                          position: "bottom",
+                        },
+                      },
+                    }}
+                  />
+                ) : (
+                  <p className="chart-placeholder">
+                    Waiting for data...
+                  </p>
+                )}
+              </div>
+            </article>
+          </div>
+        </section>
+
+        {dashboardData && (
+          <section className="metadata-section">
+            <div className="metadata-card">
+              <span>Selected Diet</span>
+              <strong>
+                {dashboardData.metadata.selectedDiet}
+              </strong>
+            </div>
+
+            <div className="metadata-card">
+              <span>Records Analyzed</span>
+              <strong>
+                {dashboardData.metadata.recordsAnalyzed}
+              </strong>
+            </div>
+
+            <div className="metadata-card">
+              <span>Total Records</span>
+              <strong>
+                {dashboardData.metadata.totalRecords}
+              </strong>
+            </div>
+
+            <div className="metadata-card">
+              <span>Execution Time</span>
+              <strong>
+                {dashboardData.metadata.executionTimeMs} ms
+              </strong>
+            </div>
+          </section>
+        )}
+
+        <section className="interaction-section">
+          <h2>Filters and Data Interaction</h2>
+
+          <div className="filter-row">
+            <input
+              type="text"
+              placeholder="Search by Diet Type"
+              value={searchTerm}
+              onChange={(event) =>
+                setSearchTerm(event.target.value)
+              }
+            />
+
+            <select
+              value={selectedDiet}
+              onChange={(event) =>
+                setSelectedDiet(event.target.value)
+              }
+            >
+              <option value="all">All Diet Types</option>
+
+              {dietTypes.map((diet) => (
+                <option key={diet} value={diet}>
+                  {capitalize(diet)}
+                </option>
+              ))}
+            </select>
+          </div>
+        </section>
+
+        <section className="api-section">
+          <h2>API Data Interaction</h2>
+
+          <div className="button-row">
+            <button
+              className="button insights-button"
+              onClick={handleInsights}
+              disabled={loading}
+            >
+              {loading
+                ? "Loading..."
+                : "Get Nutritional Insights"}
+            </button>
+
+            <button
+              className="button recipes-button"
+              onClick={() =>
+                setNotice(
+                  "Recipes are not required for the current Phase 2 dashboard."
+                )
+              }
+            >
+              Get Recipes
+            </button>
+
+            <button
+              className="button clusters-button"
+              onClick={() =>
+                setNotice(
+                  "Clustering is not required for the current Phase 2 dashboard."
+                )
+              }
+            >
+              Get Clusters
+            </button>
+          </div>
+
+          {notice && <p className="notice-message">{notice}</p>}
+        </section>
+
+        <section className="recipes-section">
+          <h2>Explore Recipes</h2>
+
+          <form className="recipe-filters" onSubmit={handleRecipeSearch}>
+            <label>
+              <span>Keyword</span>
+              <input
+                type="search"
+                placeholder="Search recipe or cuisine"
+                value={recipeKeyword}
+                onChange={(event) => setRecipeKeyword(event.target.value)}
+              />
+            </label>
+
+            <label>
+              <span>Diet Type</span>
+              <select
+                value={recipeDiet}
+                onChange={(event) => {
+                  setRecipeDiet(event.target.value);
+                  setCurrentPage(1);
+                }}
+              >
+                <option value="all">All Diet Types</option>
+                {dietTypes.map((diet) => (
+                  <option key={diet} value={diet}>
+                    {capitalize(diet)}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <button className="button insights-button" type="submit">
+              Search
+            </button>
+            <button
+              className="button clear-button"
+              type="button"
+              onClick={clearRecipeFilters}
+            >
+              Clear Filters
+            </button>
+          </form>
+
+          {recipesLoading && (
+            <div className="status-message">Loading recipes...</div>
+          )}
+          {recipesError && (
+            <div className="error-message">
+              <strong>Error:</strong> {recipesError}
+            </div>
+          )}
+
+          {!recipesLoading && !recipesError && (
+            <>
+              <p className="results-summary">
+                {recipePagination.totalItems === 0
+                  ? "No matching recipes found."
+                  : `Showing ${(recipePagination.page - 1) * recipePagination.pageSize + 1}-${Math.min(recipePagination.page * recipePagination.pageSize, recipePagination.totalItems)} of ${recipePagination.totalItems} recipes`}
+              </p>
+
+              <div className="recipe-grid">
+                {recipes.map((recipe, index) => (
+                  <article
+                    className="recipe-card"
+                    key={`${recipe.recipeName}-${index}`}
+                  >
+                    <div className="recipe-card-heading">
+                      <h3>{recipe.recipeName}</h3>
+                      <span>{recipe.dietType}</span>
+                    </div>
+                    <p>{recipe.cuisineType}</p>
+                    <dl>
+                      <div><dt>Protein</dt><dd>{recipe.protein} g</dd></div>
+                      <div><dt>Carbs</dt><dd>{recipe.carbohydrates} g</dd></div>
+                      <div><dt>Fat</dt><dd>{recipe.fat} g</dd></div>
+                    </dl>
+                  </article>
+                ))}
+              </div>
+            </>
+          )}
+
+          <div className="pagination">
+            <button
+              onClick={() =>
+                setCurrentPage((page) => Math.max(1, page - 1))
+              }
+              disabled={recipesLoading || currentPage === 1}
+            >
+              Previous
+            </button>
+
+            <span className="page-status">
+              Page {recipePagination.page} of {Math.max(1, recipePagination.totalPages)}
+            </span>
+
+            <button
+              onClick={() =>
+                setCurrentPage((page) => page + 1)
+              }
+              disabled={
+                recipesLoading ||
+                recipePagination.totalPages === 0 ||
+                currentPage >= recipePagination.totalPages
+              }
+            >
+              Next
+            </button>
+          </div>
+        </section>
+      </main>
+
+      <footer className="footer">
+        © 2026 Nutritional Insights. All Rights Reserved.
+      </footer>
+    </div>
+  );
+}
+
+export default App;
