@@ -1,8 +1,12 @@
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ||
   "https://phase3-diet-api-0135-c4c0huhcfgauc2dv.canadacentral-01.azurewebsites.net/api";
+
 export async function getDietTypes() {
-  const response = await fetch(`${API_BASE_URL}/diet-types`);
+  const response = await fetch(
+    `${API_BASE_URL}/diet-types`
+  );
+
   const data = await response.json();
 
   if (!response.ok) {
@@ -14,7 +18,9 @@ export async function getDietTypes() {
   return data.dietTypes;
 }
 
-export async function getNutritionalInsights(dietType = "all") {
+export async function getNutritionalInsights(
+  dietType = "all"
+) {
   const query = new URLSearchParams({
     dietType,
   });
@@ -27,7 +33,8 @@ export async function getNutritionalInsights(dietType = "all") {
 
   if (!response.ok) {
     throw new Error(
-      data.error || "Unable to retrieve nutritional insights."
+      data.error ||
+        "Unable to retrieve nutritional insights."
     );
   }
 
@@ -50,10 +57,13 @@ export async function getRecipes({
   const response = await fetch(
     `${API_BASE_URL}/recipes?${query.toString()}`
   );
+
   const data = await response.json();
 
   if (!response.ok) {
-    throw new Error(data.error || "Unable to retrieve recipes.");
+    throw new Error(
+      data.error || "Unable to retrieve recipes."
+    );
   }
 
   return data;
