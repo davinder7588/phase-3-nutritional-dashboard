@@ -105,9 +105,8 @@ function App() {
   // ============================================================
 
  const API_BASE_URL =
-  import.meta.env.VITE_API_URL ||
-  "https://phase3-diet-api-0135-c4c0huhcfgauc2dv.canadacentral-01.azurewebsites.net/api";
-
+  import.meta.env.VITE_API_BASE_URL ||
+  "https://phase3deit-api-e5gbd5gshacsa5h6.centralus-01.azurewebsites.net/api";
   // ============================================================
   // LOGIN
   // ============================================================
