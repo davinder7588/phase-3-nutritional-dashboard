@@ -3,20 +3,39 @@ import json
 import logging
 import os
 import time
-from datetime import datetime, timezone
+import uuid
+from datetime import datetime, timezone, timedelta
 
+import bcrypt
+import jwt
 import azure.functions as func
 import pandas as pd
-from azure.cosmos import CosmosClient
+
+from azure.cosmos import CosmosClient, exceptions
 from azure.storage.blob import (
     BlobServiceClient,
     ContentSettings
 )
 
-
+# cosmos db
 app = func.FunctionApp(
     http_auth_level=func.AuthLevel.ANONYMOUS
 )
+
+COSMOS_ENDPOINT = os.getenv("COSMOS_ENDPOINT")
+COSMOS_KEY = os.getenv("COSMOS_KEY")
+COSMOS_DATABASE = os.getenv("COSMOS_DATABASE", "authentication")
+COSMOS_USERS_CONTAINER = os.getenv(
+    "COSMOS_USERS_CONTAINER",
+    "users"
+)
+
+cosmos_client = CosmosClient(COSMOS_ENDPOINT, COSMOS_KEY)
+database = cosmos_client.get_database_client(COSMOS_DATABASE)
+users_container = database.get_container_client(
+    COSMOS_USERS_CONTAINER
+)
+JWT_SECRET = os.getenv("JWT_SECRET")
 
 
 def create_json_response(
@@ -30,7 +49,230 @@ def create_json_response(
         mimetype="application/json"
     )
 
+import uuid
 
+
+@app.route(
+    route="register",
+    methods=["POST"]
+)
+def register(req: func.HttpRequest) -> func.HttpResponse:
+    try:
+        data = req.get_json()
+
+        name = str(data.get("name", "")).strip()
+        email = str(data.get("email", "")).strip().lower()
+        password = str(data.get("password", ""))
+
+        if not name or not email or not password:
+            return create_json_response(
+                {"error": "Name, email and password are required."},
+                400
+            )
+
+        if len(password) < 8:
+            return create_json_response(
+                {"error": "Password must be at least 8 characters."},
+                400
+            )
+
+        query = """
+            SELECT * FROM c
+            WHERE c.email = @email
+        """
+
+        existing_users = list(
+            users_container.query_items(
+                query=query,
+                parameters=[
+                    {"name": "@email", "value": email}
+                ],
+                enable_cross_partition_query=True
+            )
+        )
+
+        if existing_users:
+            return create_json_response(
+                {"error": "An account with this email already exists."},
+                409
+            )
+
+        password_hash = bcrypt.hashpw(
+            password.encode("utf-8"),
+            bcrypt.gensalt()
+        ).decode("utf-8")
+
+        user = {
+            "id": str(uuid.uuid4()),
+            "name": name,
+            "email": email,
+            "password_hash": password_hash,
+            "created_at": datetime.now(
+                timezone.utc
+            ).isoformat()
+        }
+
+        users_container.create_item(body=user)
+
+        return create_json_response(
+            {
+                "message": "Account created successfully.",
+                "user": {
+                    "id": user["id"],
+                    "name": user["name"],
+                    "email": user["email"]
+                }
+            },
+            201
+        )
+
+    except ValueError:
+        return create_json_response(
+            {"error": "Invalid JSON request."},
+            400
+        )
+
+    except Exception as error:
+        logging.exception("Registration failed: %s", error)
+
+        return create_json_response(
+            {"error": "Unable to create account."},
+            500
+        )
+
+    
+@app.route(
+    route="login",
+    methods=["POST"]
+)
+def login(req: func.HttpRequest) -> func.HttpResponse:
+    try:
+        data = req.get_json()
+
+        email = str(data.get("email", "")).strip().lower()
+        password = str(data.get("password", ""))
+
+        if not email or not password:
+            return create_json_response(
+                {"error": "Email and password are required."},
+                400
+            )
+
+        query = """
+            SELECT * FROM c
+            WHERE c.email = @email
+        """
+
+        users = list(
+            users_container.query_items(
+                query=query,
+                parameters=[
+                    {"name": "@email", "value": email}
+                ],
+                enable_cross_partition_query=True
+            )
+        )
+
+        if not users:
+            return create_json_response(
+                {"error": "Invalid email or password."},
+                401
+            )
+
+        user = users[0]
+
+        password_matches = bcrypt.checkpw(
+            password.encode("utf-8"),
+            user["password_hash"].encode("utf-8")
+        )
+
+        if not password_matches:
+            return create_json_response(
+                {"error": "Invalid email or password."},
+                401
+            )
+
+        token_payload = {
+    "user_id": user["id"],
+    "email": user["email"],
+    "name": user["name"],
+    "iat": datetime.now(timezone.utc),
+    "exp": datetime.now(timezone.utc) + timedelta(hours=2)
+}
+
+        JWT_SECRET = os.getenv("JWT_SECRET")
+        token = jwt.encode(
+            token_payload,
+            JWT_SECRET,
+            algorithm="HS256"
+        )
+
+        return create_json_response({
+            "message": "Login successful.",
+            "token": token,
+            "user": {
+                "id": user["id"],
+                "name": user["name"],
+                "email": user["email"]
+            }
+        })
+
+    except ValueError:
+        return create_json_response(
+            {"error": "Invalid JSON request."},
+            400
+        )
+
+    except Exception as error:
+        logging.exception("Login failed: %s", error)
+
+        return create_json_response(
+            {"error": "Unable to process login."},
+            500
+        )
+def get_authenticated_user(req: func.HttpRequest):
+    auth_header = req.headers.get("Authorization", "")
+
+    if not auth_header.startswith("Bearer "):
+        return None
+
+    token = auth_header.split(" ", 1)[1].strip()
+
+    if not token:
+        return None
+
+    try:
+        payload = jwt.decode(
+            token,
+            JWT_SECRET,
+            algorithms=["HS256"]
+        )
+
+        return payload
+
+    except jwt.ExpiredSignatureError:
+        return None
+
+    except jwt.InvalidTokenError:
+        return None
+@app.route(
+    route="auth-test",
+    methods=["GET"]
+)
+def auth_test(req: func.HttpRequest) -> func.HttpResponse:
+    user = get_authenticated_user(req)
+
+    if not user:
+        return create_json_response(
+            {"error": "Unauthorized"},
+            401
+        )
+
+    return create_json_response({
+        "message": "Authentication successful.",
+        "user": user
+    })
+    
 def get_blob_service() -> BlobServiceClient:
     """Create the Azure Blob Storage client."""
     connection_string = os.getenv(
@@ -868,6 +1110,8 @@ def recipes(
             "source": "cleaned_diets.csv"
         })
 
+    
+
     except Exception as error:
         return create_json_response(
             {
@@ -879,3 +1123,5 @@ def recipes(
             },
             status_code=500
         )
+
+    

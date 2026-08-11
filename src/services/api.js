@@ -2,10 +2,22 @@ const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ||
   "https://phase3-diet-api-0135-c4c0huhcfgauc2dv.canadacentral-01.azurewebsites.net/api";
 
+  function getAuthHeaders() {
+  const token = localStorage.getItem("authToken");
+
+  return token
+    ? {
+        Authorization: `Bearer ${token}`,
+      }
+    : {};
+}
 export async function getDietTypes() {
-  const response = await fetch(
-    `${API_BASE_URL}/diet-types`
-  );
+ const response = await fetch(
+  `${API_BASE_URL}/diet-types`,
+  {
+    headers: getAuthHeaders(),
+  }
+);
 
   const data = await response.json();
 
@@ -26,8 +38,11 @@ export async function getNutritionalInsights(
   });
 
   const response = await fetch(
-    `${API_BASE_URL}/insights?${query.toString()}`
-  );
+  `${API_BASE_URL}/insights?${query.toString()}`,
+  {
+    headers: getAuthHeaders(),
+  }
+);
 
   const data = await response.json();
 
@@ -55,8 +70,11 @@ export async function getRecipes({
   });
 
   const response = await fetch(
-    `${API_BASE_URL}/recipes?${query.toString()}`
-  );
+  `${API_BASE_URL}/recipes?${query.toString()}`,
+  {
+    headers: getAuthHeaders(),
+  }
+);
 
   const data = await response.json();
 
